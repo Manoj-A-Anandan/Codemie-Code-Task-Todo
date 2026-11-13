@@ -1,6 +1,7 @@
 const STORAGE_KEY = "daylight-todos";
 const taskForm = document.querySelector("#add-form");
 const taskInput = document.querySelector("#task-input");
+const dueDateInput = document.querySelector("#due-date-input");
 const taskList = document.querySelector("#task-list");
 const emptyState = document.querySelector("#empty-state");
 const taskTotal = document.querySelector("#task-total");
@@ -26,13 +27,22 @@ taskForm.addEventListener("submit", (event) => {
     return;
   }
 
+  const dueDateRaw = dueDateInput?.value?.trim() ?? "";
+  const dueDate = dueDateRaw ? parseDateOnlyString(dueDateRaw) : null;
+  if (dueDateRaw && !dueDate) {
+    dueDateInput?.focus();
+    return;
+  }
+
   tasks.unshift({
     id: createId(),
     text,
     completed: false,
     createdAt: Date.now(),
+    ...(dueDate ? { dueDate } : {}),
   });
   taskInput.value = "";
+  if (dueDateInput) dueDateInput.value = "";
   saveAndRender();
   taskInput.focus();
 });
@@ -74,17 +84,85 @@ function createId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function getLocalISODate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateOnlyString(value) {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function formatDueDateForDisplay(isoDate) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return isoDate;
+
+  const year = match[1];
+  const monthIndex = Number(match[2]) - 1;
+  const day = match[3];
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[monthIndex] ?? match[2];
+
+  return `${day} ${month} ${year}`;
+}
+
+function formatDueDateForAria(isoDate) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return isoDate;
+
+  const year = match[1];
+  const monthIndex = Number(match[2]) - 1;
+  const day = match[3];
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[monthIndex] ?? match[2];
+
+  return `${month} ${day}, ${year}`;
+}
+
+function isOverdue(task, todayIso = getLocalISODate()) {
+  return !task.completed && typeof task.dueDate === "string" && task.dueDate < todayIso;
+}
+
 function loadTasks() {
   try {
     const storedTasks = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
     if (!Array.isArray(storedTasks)) return [];
-    return storedTasks.filter(
-      (task) =>
-        task &&
-        typeof task.id === "string" &&
-        typeof task.text === "string" &&
-        typeof task.completed === "boolean",
-    );
+    return storedTasks
+      .filter(
+        (task) =>
+          task &&
+          typeof task.id === "string" &&
+          typeof task.text === "string" &&
+          typeof task.completed === "boolean",
+      )
+      .map((task) => {
+        const dueDate = parseDateOnlyString(task.dueDate);
+        return {
+          ...task,
+          ...(dueDate ? { dueDate } : {}),
+        };
+      });
   } catch (error) {
     console.error("Could not load saved tasks.", error);
     return [];
@@ -116,12 +194,15 @@ function render() {
       : `${remaining} ${remaining === 1 ? "task" : "tasks"} left to do`;
   clearCompletedButton.hidden = completed === 0;
   emptyState.hidden = visibleTasks.length !== 0;
-  taskList.replaceChildren(...visibleTasks.map(createTaskElement));
+
+  const todayIso = getLocalISODate();
+  taskList.replaceChildren(...visibleTasks.map((task) => createTaskElement(task, todayIso)));
 }
 
-function createTaskElement(task) {
+function createTaskElement(task, todayIso = getLocalISODate()) {
   const item = document.createElement("li");
-  item.className = `task-item${task.completed ? " is-completed" : ""}`;
+  const overdue = isOverdue(task, todayIso);
+  item.className = `task-item${task.completed ? " is-completed" : ""}${overdue ? " is-overdue" : ""}`;
   item.dataset.taskId = task.id;
 
   const toggleButton = document.createElement("button");
@@ -132,9 +213,26 @@ function createTaskElement(task) {
   toggleButton.setAttribute("aria-pressed", String(task.completed));
   toggleButton.innerHTML = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3.5 8 3 3 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  const meta = document.createElement("div");
+  meta.className = "task-meta";
+
   const text = document.createElement("span");
   text.className = "task-text";
   text.textContent = task.text;
+
+  meta.append(text);
+
+  if (typeof task.dueDate === "string") {
+    const dueBadge = document.createElement("span");
+    dueBadge.className = "task-due-date";
+    dueBadge.textContent = formatDueDateForDisplay(task.dueDate);
+
+    const ariaDue = formatDueDateForAria(task.dueDate);
+    dueBadge.setAttribute("aria-label", `Due ${ariaDue}${overdue ? " (Overdue)" : ""}`);
+    dueBadge.setAttribute("role", "note");
+
+    meta.append(dueBadge);
+  }
 
   const deleteButton = document.createElement("button");
   deleteButton.className = "delete-button";
@@ -143,7 +241,7 @@ function createTaskElement(task) {
   deleteButton.setAttribute("aria-label", `Delete: ${task.text}`);
   deleteButton.textContent = "×";
 
-  item.append(toggleButton, text, deleteButton);
+  item.append(toggleButton, meta, deleteButton);
   return item;
 }
 
