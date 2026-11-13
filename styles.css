@@ -350,10 +350,13 @@ h1 span {
 /* Due date badge / meta */
 .task-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 
+/* Alias kept for backward compatibility: JS uses .task-due-date */
+.task-due-date,
 .due-date {
   display: inline-flex;
   align-items: center;
@@ -367,6 +370,7 @@ h1 span {
   box-shadow: inset 0 0 0 1px rgba(226, 229, 234, 0.95);
 }
 
+.task-item.is-overdue:not(.is-completed) .task-due-date,
 .task-item.is-overdue:not(.is-completed) .due-date {
   background: #fff0ef;
   color: #7a2f2d;
