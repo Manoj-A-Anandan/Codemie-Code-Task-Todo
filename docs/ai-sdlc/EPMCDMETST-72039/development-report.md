@@ -45,3 +45,19 @@ No test framework exists in the repo. I ran the following:
 ## Notes
 - Overdue badge colours are `#a12622` on `#fde8e7`, which gives roughly 6:1 contrast (estimated, not measured with a tool). The state is shown as text, not colour alone.
 - The overdue state is computed at render time. A page left open past midnight updates on the next render.
+
+## Review fixes
+Addressed items from `review/code-review-report.md`. Only `app.js` was changed.
+
+| Severity | Finding | Fix |
+|---|---|---|
+| HIGH | `formatDueDate` depended on browser locale | Removed `Intl.DateTimeFormat`. The function now uses a fixed `MONTH_ABBREVIATIONS` array, a zero-padded day and the 4-digit year from the validated local `Date`. Output is always `DD MMM YYYY`. |
+| MEDIUM | `dueDateInput` assumed to exist | The submit handler reads `dueDateInput ? dueDateInput.value : ""` and clears the input only when it exists. |
+| LOW | `due.title` tooltip only | Removed the title. A visually hidden `.sr-only` span with the text "Due date: " now prefixes the date, so screen readers read "Due date: 05 Jan 2026". |
+
+**Not changed (per instruction):** `styles.css` (including the MEDIUM `.task-content` padding finding, which still needs a browser check), `loadTasks()`, the toggle, delete, clear-completed and filter handlers, and the overdue logic.
+
+**Verification:**
+- `node --check app.js` passes.
+- The helpers were run in Node, also with `LANG=de_DE.UTF-8`. All 9 cases passed: `05 Jan 2026`, `31 Dec 2026`, malformed date, yesterday (overdue), today, tomorrow, completed, malformed and legacy (all not overdue).
+- Browser rendering was not tested.

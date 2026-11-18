@@ -33,13 +33,13 @@ taskForm.addEventListener("submit", (event) => {
     completed: false,
     createdAt: Date.now(),
   };
-  const dueDate = dueDateInput.value;
+  const dueDate = dueDateInput ? dueDateInput.value : "";
   if (dueDate && parseIsoDateToLocalDate(dueDate)) {
     newTask.dueDate = dueDate;
   }
   tasks.unshift(newTask);
   taskInput.value = "";
-  dueDateInput.value = "";
+  if (dueDateInput) dueDateInput.value = "";
   saveAndRender();
   taskInput.focus();
 });
@@ -101,17 +101,15 @@ function getTodayLocalMidnight() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-// Formats a "YYYY-MM-DD" string as "DD MMM YYYY", or null if invalid.
+const MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Formats a "YYYY-MM-DD" string as "DD MMM YYYY" (locale-independent), or null if invalid.
 function formatDueDate(isoString) {
   const date = parseIsoDateToLocalDate(isoString);
   if (!date) return null;
-  const parts = new Intl.DateTimeFormat(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).formatToParts(date);
-  const part = (type) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${part("day")} ${part("month")} ${part("year")}`;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = MONTH_ABBREVIATIONS[date.getMonth()];
+  return `${day} ${month} ${date.getFullYear()}`;
 }
 
 function isTaskOverdue(task, todayLocalMidnight = getTodayLocalMidnight()) {
@@ -203,8 +201,10 @@ function createTaskElement(task, todayLocalMidnight = getTodayLocalMidnight()) {
 
     const due = document.createElement("span");
     due.className = "task-due-date";
-    due.textContent = formattedDueDate;
-    due.title = "Due date";
+    const dueLabel = document.createElement("span");
+    dueLabel.className = "sr-only";
+    dueLabel.textContent = "Due date: ";
+    due.append(dueLabel, formattedDueDate);
     meta.append(due);
 
     if (overdue) {
