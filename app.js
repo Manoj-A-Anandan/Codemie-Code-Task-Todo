@@ -1,6 +1,7 @@
 const STORAGE_KEY = "daylight-todos";
 const taskForm = document.querySelector("#add-form");
 const taskInput = document.querySelector("#task-input");
+const dueDateInput = document.querySelector("#task-due-date");
 const taskList = document.querySelector("#task-list");
 const emptyState = document.querySelector("#empty-state");
 const taskTotal = document.querySelector("#task-total");
@@ -26,13 +27,19 @@ taskForm.addEventListener("submit", (event) => {
     return;
   }
 
-  tasks.unshift({
+  const newTask = {
     id: createId(),
     text,
     completed: false,
     createdAt: Date.now(),
-  });
+  };
+  const dueDate = dueDateInput ? dueDateInput.value : "";
+  if (dueDate && parseIsoDateToLocalDate(dueDate)) {
+    newTask.dueDate = dueDate;
+  }
+  tasks.unshift(newTask);
   taskInput.value = "";
+  if (dueDateInput) dueDateInput.value = "";
   saveAndRender();
   taskInput.focus();
 });
@@ -72,6 +79,44 @@ clearCompletedButton.addEventListener("click", () => {
 
 function createId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Converts a "YYYY-MM-DD" string to a Date at local midnight, or null if invalid.
+function parseIsoDateToLocalDate(isoString) {
+  if (typeof isoString !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoString);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function getTodayLocalMidnight() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+const MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Formats a "YYYY-MM-DD" string as "DD MMM YYYY" (locale-independent), or null if invalid.
+function formatDueDate(isoString) {
+  const date = parseIsoDateToLocalDate(isoString);
+  if (!date) return null;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = MONTH_ABBREVIATIONS[date.getMonth()];
+  return `${day} ${month} ${date.getFullYear()}`;
+}
+
+function isTaskOverdue(task, todayLocalMidnight = getTodayLocalMidnight()) {
+  if (task.completed === true) return false;
+  const due = parseIsoDateToLocalDate(task.dueDate);
+  if (!due) return false;
+  return due < todayLocalMidnight;
 }
 
 function loadTasks() {
@@ -116,12 +161,14 @@ function render() {
       : `${remaining} ${remaining === 1 ? "task" : "tasks"} left to do`;
   clearCompletedButton.hidden = completed === 0;
   emptyState.hidden = visibleTasks.length !== 0;
-  taskList.replaceChildren(...visibleTasks.map(createTaskElement));
+  const todayLocalMidnight = getTodayLocalMidnight();
+  taskList.replaceChildren(...visibleTasks.map((task) => createTaskElement(task, todayLocalMidnight)));
 }
 
-function createTaskElement(task) {
+function createTaskElement(task, todayLocalMidnight = getTodayLocalMidnight()) {
+  const overdue = isTaskOverdue(task, todayLocalMidnight);
   const item = document.createElement("li");
-  item.className = `task-item${task.completed ? " is-completed" : ""}`;
+  item.className = `task-item${task.completed ? " is-completed" : ""}${overdue ? " is-overdue" : ""}`;
   item.dataset.taskId = task.id;
 
   const toggleButton = document.createElement("button");
@@ -143,7 +190,33 @@ function createTaskElement(task) {
   deleteButton.setAttribute("aria-label", `Delete: ${task.text}`);
   deleteButton.textContent = "×";
 
-  item.append(toggleButton, text, deleteButton);
+  const content = document.createElement("div");
+  content.className = "task-content";
+  content.append(text);
+
+  const formattedDueDate = formatDueDate(task.dueDate);
+  if (formattedDueDate) {
+    const meta = document.createElement("span");
+    meta.className = "task-meta";
+
+    const due = document.createElement("span");
+    due.className = "task-due-date";
+    const dueLabel = document.createElement("span");
+    dueLabel.className = "sr-only";
+    dueLabel.textContent = "Due date: ";
+    due.append(dueLabel, formattedDueDate);
+    meta.append(due);
+
+    if (overdue) {
+      const badge = document.createElement("span");
+      badge.className = "badge badge--overdue";
+      badge.textContent = "Overdue";
+      meta.append(badge);
+    }
+    content.append(meta);
+  }
+
+  item.append(toggleButton, content, deleteButton);
   return item;
 }
 
